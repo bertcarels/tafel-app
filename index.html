@@ -24,8 +24,14 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
         .qr {
-            width: 80px;
-            height: 80px;
+           width: 80px;
+           height: 80px; 
+           overflow: hidden; /* in case the image still overflows, but with object-fit it shouldn't */
+        }
+        .qr img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
         .subtitle {
             color: rgb(0, 0, 0);
