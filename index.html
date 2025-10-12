@@ -119,7 +119,7 @@
         let readyTables = new Set();
 
         function connect() {
-            ws = new WebSocket('ws://localhost:8765');
+            ws = new WebSocket('wss://tableclient.kaboutersoft.be');
 
             ws.onopen = function() {
                 document.getElementById('status').className = 'status connected';
@@ -199,7 +199,7 @@
                 tableElement.className = 'table';
                 //tableElement.textContent = `Tafel\n${table}`;
                 //tableElement.id = `table-${table}`;
-                
+
 
 
 
@@ -207,11 +207,11 @@
                 const labelElement = document.createElement('div');
                 labelElement.className = 'table-label';
                 labelElement.textContent = 'Tafel';
-                
+
                 const numberElement = document.createElement('div');
                 numberElement.className = 'table-number';
                 numberElement.textContent = table;
-                
+
                 tableElement.appendChild(labelElement);
                 tableElement.appendChild(numberElement);
                 grid.appendChild(tableElement);
