@@ -1,0 +1,228 @@
+<!-- display.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ready Tables Display</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background:  #ffffff;
+            height: 100vh;
+            overflow: auto;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 {
+            color: rgb(0, 0, 0);
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .subtitle {
+            color: rgb(0, 0, 0);
+            font-size: 1.5em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        .table-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .table {
+            padding: 40px 20px;
+            text-align: center;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            border: 3px solid #ffc107;
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+            animation: pulse 2s infinite;
+        }
+        .no-tables {
+            color: rgb(0, 0, 0);
+            font-size: 2em;
+            text-align: center;
+            margin-top: 50px;
+            grid-column: 1 / -1;
+        }
+        .status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        .connected { background-color: #4caf50; }
+        .disconnected { background-color: #f44336; }
+        .stats {
+            color: rgb(0, 0, 0);
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            display: inline-block;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+            100% { transform: scale(1); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(50px) rotateX(-90deg);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) rotateX(0);
+            }
+        }
+
+        .table.new {
+            animation: slideIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="status" id="status">Connecting...</div>
+
+    <div class="container">
+        <h1>Italiaanse avond</h1>
+        <div class="subtitle">overzicht tafels</div>
+
+
+
+        <div class="table-grid" id="readyTables">
+            <div class="no-tables" id="noTables">Geen tafels klaar op dit moment</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let readyTables = new Set();
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onopen = function() {
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+                console.log('Connected to server');
+                // Request initial data
+                ws.send(JSON.stringify({action: 'get_initial_data'}));
+            };
+
+            ws.onmessage = function(event) {
+                console.log('Message received:', event.data);
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onclose = function() {
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected';
+                console.log('Disconnected from server');
+                // Try to reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function handleMessage(data) {
+            console.log('Handling message type:', data.type, 'data:', data);
+
+            switch(data.type) {
+                case 'initial_data':
+                    // Completely replace the ready tables set
+                    readyTables = new Set(data.ready_tables);
+                    console.log('Initial ready tables:', Array.from(readyTables));
+                    renderAllTables();
+                    break;
+                case 'table_ready':
+                    // Add table to ready set
+                    readyTables.add(data.table_number);
+                    console.log('Table marked as ready:', data.table_number, 'Current ready tables:', Array.from(readyTables));
+                    renderAllTables();
+                    break;
+                case 'table_served':
+                    // Remove table from ready set
+                    readyTables.delete(data.table_number);
+                    console.log('Table marked as served:', data.table_number, 'Current ready tables:', Array.from(readyTables));
+                    renderAllTables();
+                    break;
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        }
+
+        function renderAllTables() {
+            const grid = document.getElementById('readyTables');
+            const noTables = document.getElementById('noTables');
+            const readyCount = document.getElementById('readyCount');
+
+            //readyCount.textContent = readyTables.size;
+
+            console.log('Rendering all tables:', Array.from(readyTables));
+
+            // Clear the grid completely
+            grid.innerHTML = '';
+
+            if (readyTables.size === 0) {
+                grid.innerHTML = '<div class="no-tables" id="noTables">Geen tafels klaar op dit moment</div>';
+                return;
+            }
+
+            // Add all ready tables to the grid
+            const sortedTables = Array.from(readyTables).sort((a, b) => a - b);
+            sortedTables.forEach(table => {
+                const tableElement = document.createElement('div');
+                tableElement.className = 'table';
+                //tableElement.textContent = `Tafel\n${table}`;
+                //tableElement.id = `table-${table}`;
+                
+
+
+
+                // Create two separate elements for label and number
+                const labelElement = document.createElement('div');
+                labelElement.className = 'table-label';
+                labelElement.textContent = 'Tafel';
+                
+                const numberElement = document.createElement('div');
+                numberElement.className = 'table-number';
+                numberElement.textContent = table;
+                
+                tableElement.appendChild(labelElement);
+                tableElement.appendChild(numberElement);
+                grid.appendChild(tableElement);
+
+            });
+
+            console.log('Display rendered with', grid.children.length, 'table elements');
+        }
+
+        // Initialize connection
+        connect();
+    </script>
+</body>
+</html>
