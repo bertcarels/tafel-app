@@ -1,4 +1,3 @@
-<!-- display.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -8,14 +7,16 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background:  #ffffff;
+            background: #ffffff;
             height: 100vh;
-            overflow: auto;
+            overflow: hidden;
         }
         .container {
             text-align: center;
             padding: 20px;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         h1 {
             color: rgb(0, 0, 0);
@@ -25,8 +26,9 @@
         }
         .qr {
            width: 200px;
-           height: 200px; 
-           overflow: hidden; /* in case the image still overflows, but with object-fit it shouldn't */
+           height: 200px;
+           overflow: hidden;
+           margin: 0 auto;
         }
         .qr img {
             width: 100%;
@@ -39,14 +41,42 @@
             margin-bottom: 30px;
             opacity: 0.9;
         }
+
+        /* Carousel Styles */
+        .carousel-container {
+            position: relative;
+            width: 100%;
+            flex: 1;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .carousel-track {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+            height: 100%;
+        }
+
+        .carousel-slide {
+            flex: 0 0 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
         .table-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 20px;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 20px;
+            width: 100%;
+            height: 100%;
+            align-content: center;
         }
+
         .table {
             padding: 40px 20px;
             text-align: center;
@@ -59,6 +89,7 @@
             color: #333;
             animation: pulse 2s infinite;
         }
+
         .no-tables {
             color: rgb(0, 0, 0);
             font-size: 2em;
@@ -66,6 +97,7 @@
             margin-top: 50px;
             grid-column: 1 / -1;
         }
+
         .status {
             position: fixed;
             top: 10px;
@@ -78,14 +110,25 @@
         }
         .connected { background-color: #4caf50; }
         .disconnected { background-color: #f44336; }
-        .stats {
-            color: rgb(0, 0, 0);
-            font-size: 1.5em;
-            margin-bottom: 20px;
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 10px;
-            display: inline-block;
+
+        .carousel-indicators {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ccc;
+            margin: 0 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .indicator.active {
+            background-color: #ffc107;
         }
 
         @keyframes pulse {
@@ -114,20 +157,29 @@
     <div class="status" id="status">Connecting...</div>
 
     <div class="container">
-        <h1>Italiaanse avond</h1>
         <div class="qr"><img src="qr.svg" alt="qrcode"> </div>
-        <div class="subtitle">overzicht tafels</div>
+        <div class="subtitle"> Uitleg</div>
 
+        <div class="carousel-container">
+            <div class="carousel-track" id="carouselTrack">
+                <!-- Slides will be dynamically added here -->
+            </div>
+        </div>
 
-
-        <div class="table-grid" id="readyTables">
-            <div class="no-tables" id="noTables">Geen tafels klaar op dit moment</div>
+        <div class="carousel-indicators" id="carouselIndicators">
+            <!-- Indicators will be dynamically added here -->
         </div>
     </div>
 
     <script>
         let ws = null;
         let readyTables = new Set();
+        let currentSlide = 0;
+        let slideInterval = null;
+        const SLIDE_DURATION = 5000; // 5 seconds per slide
+
+        // Carousel configuration
+        const TABLES_PER_SLIDE = 14; // Adjust based on your screen size and table size
 
         function connect() {
             ws = new WebSocket('wss://tableclient.kaboutersoft.be');
@@ -167,69 +219,142 @@
                     // Completely replace the ready tables set
                     readyTables = new Set(data.ready_tables);
                     console.log('Initial ready tables:', Array.from(readyTables));
-                    renderAllTables();
+                    renderCarousel();
                     break;
                 case 'table_ready':
                     // Add table to ready set
                     readyTables.add(data.table_number);
                     console.log('Table marked as ready:', data.table_number, 'Current ready tables:', Array.from(readyTables));
-                    renderAllTables();
+                    renderCarousel();
                     break;
                 case 'table_served':
                     // Remove table from ready set
                     readyTables.delete(data.table_number);
                     console.log('Table marked as served:', data.table_number, 'Current ready tables:', Array.from(readyTables));
-                    renderAllTables();
+                    renderCarousel();
                     break;
                 default:
                     console.log('Unknown message type:', data.type);
             }
         }
 
-        function renderAllTables() {
-            const grid = document.getElementById('readyTables');
-            const noTables = document.getElementById('noTables');
-            const readyCount = document.getElementById('readyCount');
+        function renderCarousel() {
+            const track = document.getElementById('carouselTrack');
+            const indicators = document.getElementById('carouselIndicators');
 
-            //readyCount.textContent = readyTables.size;
+            // Clear existing content
+            track.innerHTML = '';
+            indicators.innerHTML = '';
 
-            console.log('Rendering all tables:', Array.from(readyTables));
-
-            // Clear the grid completely
-            grid.innerHTML = '';
+            // Clear any existing interval
+            if (slideInterval) {
+                clearInterval(slideInterval);
+            }
 
             if (readyTables.size === 0) {
-                grid.innerHTML = '<div class="no-tables" id="noTables">Geen tafels klaar op dit moment</div>';
+                // No tables available
+                const slide = document.createElement('div');
+                slide.className = 'carousel-slide';
+                slide.innerHTML = '<div class="no-tables">Geen tafels klaar op dit moment</div>';
+                track.appendChild(slide);
+
+                // Add one indicator
+                const indicator = document.createElement('div');
+                indicator.className = 'indicator active';
+                indicators.appendChild(indicator);
+
                 return;
             }
 
-            // Add all ready tables to the grid
+            // Sort tables
             const sortedTables = Array.from(readyTables).sort((a, b) => a - b);
-            sortedTables.forEach(table => {
-                const tableElement = document.createElement('div');
-                tableElement.className = 'table';
-                //tableElement.textContent = `Tafel\n${table}`;
-                //tableElement.id = `table-${table}`;
 
+            // Calculate number of slides needed
+            const totalSlides = Math.ceil(sortedTables.length / TABLES_PER_SLIDE);
 
+            // Create slides
+            for (let i = 0; i < totalSlides; i++) {
+                const slide = document.createElement('div');
+                slide.className = 'carousel-slide';
 
+                const grid = document.createElement('div');
+                grid.className = 'table-grid';
 
-                // Create two separate elements for label and number
-                const labelElement = document.createElement('div');
-                labelElement.className = 'table-label';
-                labelElement.textContent = 'Tafel';
+                // Add tables to this slide
+                const startIndex = i * TABLES_PER_SLIDE;
+                const endIndex = Math.min(startIndex + TABLES_PER_SLIDE, sortedTables.length);
 
-                const numberElement = document.createElement('div');
-                numberElement.className = 'table-number';
-                numberElement.textContent = table;
+                for (let j = startIndex; j < endIndex; j++) {
+                    const table = sortedTables[j];
+                    const tableElement = document.createElement('div');
+                    tableElement.className = 'table';
 
-                tableElement.appendChild(labelElement);
-                tableElement.appendChild(numberElement);
-                grid.appendChild(tableElement);
+                    const labelElement = document.createElement('div');
+                    labelElement.className = 'table-label';
+                    labelElement.textContent = 'Tafel';
 
+                    const numberElement = document.createElement('div');
+                    numberElement.className = 'table-number';
+                    numberElement.textContent = table;
+
+                    tableElement.appendChild(labelElement);
+                    tableElement.appendChild(numberElement);
+                    grid.appendChild(tableElement);
+                }
+
+                slide.appendChild(grid);
+                track.appendChild(slide);
+
+                // Create indicator
+                const indicator = document.createElement('div');
+                indicator.className = 'indicator';
+                if (i === 0) indicator.classList.add('active');
+                indicator.addEventListener('click', () => goToSlide(i));
+                indicators.appendChild(indicator);
+            }
+
+            // Start auto-rotation if there's more than one slide
+            if (totalSlides > 1) {
+                slideInterval = setInterval(nextSlide, SLIDE_DURATION);
+            }
+
+            // Reset to first slide
+            currentSlide = 0;
+            updateCarouselPosition();
+        }
+
+        function nextSlide() {
+            const totalSlides = document.querySelectorAll('.carousel-slide').length;
+            currentSlide = (currentSlide + 1) % totalSlides;
+            updateCarouselPosition();
+        }
+
+        function goToSlide(slideIndex) {
+            currentSlide = slideIndex;
+            updateCarouselPosition();
+
+            // Reset the auto-rotation timer
+            if (slideInterval) {
+                clearInterval(slideInterval);
+                slideInterval = setInterval(nextSlide, SLIDE_DURATION);
+            }
+        }
+
+        function updateCarouselPosition() {
+            const track = document.getElementById('carouselTrack');
+            const indicators = document.querySelectorAll('.indicator');
+
+            // Update track position
+            track.style.transform = `translateX(-${currentSlide * 100}%)`;
+
+            // Update indicators
+            indicators.forEach((indicator, index) => {
+                if (index === currentSlide) {
+                    indicator.classList.add('active');
+                } else {
+                    indicator.classList.remove('active');
+                }
             });
-
-            console.log('Display rendered with', grid.children.length, 'table elements');
         }
 
         // Initialize connection
